@@ -67,12 +67,8 @@ def func(node, parents):
     cond_probs = dict()
 
     for i in range(data_size):
-        parents_cond = []
 
-        for p in parents:
-            parents_cond.append(data[p][i])
-
-        parents_cond = tuple(parents_cond)
+        parents_cond = tuple(data[p][i] for p in parents)
 
         if parents_cond in combinations:
             comb_index = combinations.index(parents_cond)
@@ -91,7 +87,6 @@ def init_baynet():
         if val:
             true_count += 1
     prob_A = (true_count / data_size)
-
     bayes_net["A"] = {"children": ["C", "D"], "parents": [], "prob": prob_A, "condit_prob": {} }
 
     true_count = 0
@@ -99,32 +94,29 @@ def init_baynet():
         if val:
             true_count += 1
     prob_B = (true_count / data_size)
-
     bayes_net["B"] = {"children": ["D"], "parents": [], "prob": prob_B, "condit_prob": {} }
 
-    c_cond_probs = func(2, [0])
-    
+    c_cond_probs = create_cond_table(2, [0])
     bayes_net["C"] = {"children": ["E", "F"], "parents": ["A"], "prob": -1, "condit_prob": c_cond_probs }
 
-    d_cond_probs = func(3, [0, 1])
+    d_cond_probs = create_cond_table(3, [0, 1])
     bayes_net["D"] = {"children": ["G"], "parents": ["A", "B"], "prob": -1, "condit_prob": d_cond_probs }
 
-    e_cond_probs = func(4, [2])
+    e_cond_probs = create_cond_table(4, [2])
     bayes_net["E"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": e_cond_probs }
 
-    f_cond_probs = func(5, [2])
+    f_cond_probs = create_cond_table(5, [2])
     bayes_net["F"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": f_cond_probs }
 
-    g_cond_probs = func(6, [3])
+    g_cond_probs = create_cond_table(6, [3])
     bayes_net["G"] = {"children": [], "parents": ["D"], "prob": -1, "condit_prob": g_cond_probs }
 
-def normalize(dist):
-
-    return tuple(x * 1/(sum(dist)) for x in dist)
+def normalize(distribution):
+    return tuple(val * 1 / (sum(distribution)) for val in distribution)
 
 def toposort():
     variables = list(bayes_net.keys())
-    variables.sort()
+    print(variables)
     s = set()
     l = []
     while len(s) < len(variables):
@@ -132,12 +124,16 @@ def toposort():
             if v not in s and all(x in s for x in bayes_net[v]['parents']):
                 s.add(v)
                 l.append(v)
+    print(l)
     return l
 
 def querygiven(Y, e):
     # Y has no parents
     if bayes_net[Y]['prob'] != -1:
-        prob = bayes_net[Y]['prob'] if e[Y] else 1 - bayes_net[Y]['prob']
+        if e[Y]:
+            prob = bayes_net[Y]['prob']
+        else:
+            prob = 1 - bayes_net[Y]['prob']
 
     # Y has at least 1 parent
     else:
@@ -163,13 +159,7 @@ def enum_all(variables, e):
             e2[Y] = y
             probs.append(querygiven(Y, e2) * enum_all(variables[1:], e2))
         ret = sum(probs) 
-    """
-    print("%-14s | %-20s = %.8f" % (
-            ' '.join(variables),
-            ' '.join('%s=%s' % (v, 't' if e[v] else 'f') for v in e),
-            ret
-        ))
-    """
+
     return ret
 
 def enum_ask(X, e):
@@ -184,20 +174,15 @@ def enum_ask(X, e):
     
     for c in combinations:
 
-        # make a copy of the evidence set
         e = copy.deepcopy(e)
 
-        # extend e with value of X
         for i in range(len(X_list)):
             e[X_list[i]] = c[i]
 
-        # topological sort
         variables = toposort()
 
-        # enumerate
         dist.append(enum_all(variables, e))
 
-    # normalize & return
     normalized = normalize(dist)
     return normalized[target]
 
@@ -244,6 +229,7 @@ def calc_with_data(query_dict, evidence_dict):
     evidence_total = len(pool)
 
     return success_count / evidence_total
+
 
 init_baynet()
 
