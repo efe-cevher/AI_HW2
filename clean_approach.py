@@ -1,195 +1,153 @@
 import numpy as np
 import copy, itertools
 
-data = np.load('data1.npy')
+data = np.load('data 1.npy')
 data_size = len(data[0])
 bayes_net = dict()
 
-def create_cond_table(var0_index, var1_index):
-    var0_true_count = 0
-    var1_true_count = [0, 0]
-    cond_probs = dict()
-
-    for i in range(data_size):
-        if data[var0_index][i]:
-            if data[var1_index][i]:
-                var1_true_count[0] +=1
-            var0_true_count += 1
-            
-        else:
-            if data[var1_index][i]:
-                var1_true_count[1] +=1
-        
-    cond_probs[(True,)] = var1_true_count[0]/var0_true_count
-    cond_probs[(False,)] = var1_true_count[1]/(data_size - var0_true_count)
-
-    return cond_probs
-
-def create_cond_table2(var0_index, var1_index, var2_index):
-    cond_sizes = [0, 0, 0, 0]
-    var2_true_count = [0, 0, 0 ,0]
-    cond_probs = dict()
-
-    for i in range(data_size):
-        if data[var0_index][i]:
-            if data[var1_index][i]:
-                if data[var2_index][i]:
-                    var2_true_count[0] +=1
-                cond_sizes[0] += 1
-            else:
-                if data[var2_index][i]:
-                    var2_true_count[1] +=1
-                cond_sizes[1] += 1
-        else:
-            if data[var1_index][i]:
-                if data[var2_index][i]:
-                    var2_true_count[2] +=1
-                cond_sizes[2] += 1
-            else:
-                if data[var2_index][i]:
-                    var2_true_count[3] +=1
-                cond_sizes[3] += 1
-
-    cond_probs[(True, True)] = var2_true_count[0] / cond_sizes[0]
-    cond_probs[(True, False)] = var2_true_count[1] / cond_sizes[1]
-    cond_probs[(False, True)] = var2_true_count[2] / cond_sizes[2]
-    cond_probs[(False, False)] = var2_true_count[3] / cond_sizes[3]
-
-    return cond_probs
-
-def func(node, parents):
+def create_condtable(node, parents):
+# Calculate conditional probabilites for permutations of the parent nodes from data
     l=[True,False]
-    combinations = list(itertools.product(l,repeat=len(parents)))
-    combinations_size = len(combinations)
+    permutations = list(itertools.product(l,repeat=len(parents))) #Generate True False permutations
+    permutations_size = len(permutations)
 
-    cond_sizes = [0] * combinations_size
-    node_true_count = [0] * combinations_size
+    cond_sizes = [0] * permutations_size
+    node_true_count = [0] * permutations_size
     cond_probs = dict()
 
     for i in range(data_size):
 
-        parents_cond = tuple(data[p][i] for p in parents)
+        parents_cond = tuple(data[p][i] for p in parents) #Get current state of parents
 
-        if parents_cond in combinations:
-            comb_index = combinations.index(parents_cond)
-            cond_sizes[comb_index] += 1
-            if data[node][i]:
-                node_true_count[comb_index] += 1
+        perm_index = permutations.index(parents_cond)
+        cond_sizes[perm_index] += 1
+
+        if data[node][i]:
+            node_true_count[perm_index] += 1
             
-    for i in range(combinations_size):
-        cond_probs[combinations[i]] = node_true_count[i] / cond_sizes[i]
+    for i in range(permutations_size):
+        cond_probs[permutations[i]] = node_true_count[i] / cond_sizes[i]
 
     return cond_probs
 
 def init_baynet():
+# Initialize bayesian network structure from the given data
     true_count = 0
     for val in data[0]:
-        if val:
-            true_count += 1
-    prob_A = (true_count / data_size)
+        if val: true_count += 1
+
+    prob_A = true_count / data_size
     bayes_net["A"] = {"children": ["C", "D"], "parents": [], "prob": prob_A, "condit_prob": {} }
 
     true_count = 0
     for val in data[1]:
-        if val:
-            true_count += 1
-    prob_B = (true_count / data_size)
+        if val: true_count += 1
+
+    prob_B = true_count / data_size
     bayes_net["B"] = {"children": ["D"], "parents": [], "prob": prob_B, "condit_prob": {} }
 
-    c_cond_probs = create_cond_table(0, 2)
+    c_cond_probs = create_condtable(2, [0])
     bayes_net["C"] = {"children": ["E", "F"], "parents": ["A"], "prob": -1, "condit_prob": c_cond_probs }
 
-    d_cond_probs = create_cond_table2(0, 1, 3)
+    d_cond_probs = create_condtable(3, [0, 1])
+
     bayes_net["D"] = {"children": ["G"], "parents": ["A", "B"], "prob": -1, "condit_prob": d_cond_probs }
 
-    e_cond_probs = create_cond_table(2, 4)
+    e_cond_probs = create_condtable(4, [2])
     bayes_net["E"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": e_cond_probs }
 
-    f_cond_probs = create_cond_table(2, 5)
+    f_cond_probs = create_condtable(5, [2])
     bayes_net["F"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": f_cond_probs }
 
-    g_cond_probs = create_cond_table(3, 6)
+    g_cond_probs = create_condtable(6, [3])
     bayes_net["G"] = {"children": [], "parents": ["D"], "prob": -1, "condit_prob": g_cond_probs }
 
 def normalize(distribution):
+# Normalize probabilities (add up to 1.0)
     return tuple(val / (sum(distribution)) for val in distribution)
 
-def query_given(Y, evidence_dict):
-
-    if bayes_net[Y]['prob'] != -1: #No parent
+def query(Y, evidence_dict):
+    # No parents
+    if bayes_net[Y]["prob"] != -1:
         if evidence_dict[Y]:
-            prob = bayes_net[Y]['prob']
+            prob = bayes_net[Y]["prob"]
         else:
-            prob = 1 - bayes_net[Y]['prob']
+            prob = 1 - bayes_net[Y]["prob"]
     else:
-        parents = tuple(evidence_dict[parent] for parent in bayes_net[Y]['parents'])
-        
-        # query for prob of Y = y      
-        prob = bayes_net[Y]['condit_prob'][parents] if e[Y] else 1 - bayes_net[Y]['condit_prob'][parents]
+        # Get the parent values of Y
+        parent_vals = tuple(evidence_dict[parent] for parent in bayes_net[Y]["parents"])
+        # Probability of Y = y
+        if evidence_dict[Y]:
+            prob = bayes_net[Y]["condit_prob"][parent_vals]  
+        else:
+            prob = 1 - bayes_net[Y]["condit_prob"][parent_vals]
     return prob
 
 def enum_all(variables, evidence_dict):
-
+# Enumarate over all the given variables recursively
     if len(variables) == 0:
         return 1.0
 
     Y = variables[0]
     if Y in evidence_dict:
-        ret = query_given(Y, evidence_dict) * enum_all(variables[1:], evidence_dict)
+        result = query(Y, evidence_dict) * enum_all(variables[1:], evidence_dict)
 
     else:
         probabilities = []
         evidence_copy = copy.deepcopy(evidence_dict)
-        
+
         for y in [True, False]:
             evidence_copy[Y] = y
-            probabilities.append(query_given(Y, evidence_copy) * enum_all(variables[1:], evidence_copy))
-        ret = sum(probabilities) 
+            probabilities.append(query(Y, evidence_copy) * enum_all(variables[1:], evidence_copy))
 
-    return ret
+        result = sum(probabilities) 
+
+    return result
 
 def enum_ask(query_dict, evidence_dict):
-    dist= []
+# Calculate the probability of given query with enumeration
+    distribution = []
     l=[True,False]
-    combinations = [list(i) for i in itertools.product(l,repeat=len(query_dict))]
+    permutations = [list(i) for i in itertools.product(l,repeat=len(query_dict))] #Generate True False permutations
 
     query_vars = list(query_dict.keys())
     query_values = list(query_dict.values())
 
-    target = combinations.index(query_values)
+    target = permutations.index(query_values)
     
-    for comb in combinations:
+    for perm in permutations:
 
         evidence_copy = copy.deepcopy(evidence_dict)
 
         for i in range(len(query_vars)):
-            evidence_copy[query_vars[i]] = comb[i]
+            evidence_copy[query_vars[i]] = perm[i]
 
         variables = list(bayes_net.keys())
-        dist.append(enum_all(variables, evidence_copy))
+        distribution.append(enum_all(variables, evidence_copy))
 
-    normalized = normalize(dist)
+    normalized = normalize(distribution)
     return normalized[target]
 
 def calc_with_data(query_dict, evidence_dict):
-    data_traversed = []
+# Calculate the probability of given query by only using the data
+    data_traversed = [] 
     for i in range(len(data[0])):
         values = []
         for j in range(len(data)):
             values.append(data[j][i])
         data_traversed.append(values)
 
-    eviences_int = {}
+    eviences_int = {} # Evidence variables dict index values as keys
     for evidence in evidence_dict:
         int_val = int(evidence, 32) - 10
         eviences_int[int_val] = evidence
 
-    queries_int = {}
+    queries_int = {} # Query variables dict index values as keys
     for query in query_dict:
         int_val = int(query, 32) - 10
         queries_int[int_val] = query
 
-    pool = []
+    pool = [] # Part of the data where given evidences occur
 
     for line in data_traversed:
         satisfied = True
@@ -215,40 +173,68 @@ def calc_with_data(query_dict, evidence_dict):
 
     return success_count / evidence_total
 
-init_baynet()
-
-#UI
-query_in = input("Please give query variables: ")
-evidence_in = input("Please give evidence variables: ")
-
 def parse_variables(input):
+# Parse the user input seperated with spaces
     variables = dict()
     for elem in input.split(" "):
         if len(elem) > 0 and len(elem) < 3:
             if elem[0] == "n":
+                if elem[1] in variables:
+                    return None
                 variables[elem[1]] = False
             else:
+                if elem[0] in variables:
+                    return None
                 variables[elem[0]] = True
     return variables
 
-queries = parse_variables(query_in)
-evidences = parse_variables(evidence_in)
 
-if len(queries) == 0:
-    print("\nQuery side cannot be empty")
-    exit()
+print("Please wait, initializing the bayesian network from the data...")
+init_baynet()
 
-variable_set = {"A", "B", "C", "D", "E", "F", "G"}
+while True:
+# Main loop
+    
+    query_in = input("\nPlease give query variables: ")
+    evidence_in = input("Please give evidence variables: ")
 
-query_set = set(queries.keys())
-evidence_set = set(evidences.keys())
+    queries = parse_variables(query_in)
+    evidences = parse_variables(evidence_in)
 
-if not set.union(query_set, evidence_set).issubset(variable_set):
-    print("\nA given variable does not exist")
-    exit()
+    if queries == None:
+        print("\nRepeating element on the query side")
+        continue
 
-data_result = calc_with_data(queries, evidences)
-inferenece_result = enum_ask(queries, evidences)
+    if evidences == None:
+        print("\nRepeating element on the evidence side")
+        continue
 
-print("The probability calculated by inference is " + str(inferenece_result))
-print("The probability calculated from data is " + str(data_result))
+    if len(queries) == 0:
+        print("\nQuery side cannot be empty")
+        continue
+
+    variable_set = {"A", "B", "C", "D", "E", "F", "G"}
+    query_variables = list(queries.keys())
+    query_set = set(query_variables)
+
+    evidence_variables = list(evidences.keys())
+    evidence_set = set(evidence_variables)
+
+    if not set.union(query_set, evidence_set).issubset(variable_set):
+        print("\nGiven variable does not exist")
+        continue
+
+    legal = True
+    for var in evidence_set:
+        if var in query_set:
+            print("\nRepeating variable on two sides")
+            legal = False
+
+    if not legal:
+        continue
+
+    data_result = calc_with_data(queries, evidences)
+    inferenece_result = enum_ask(queries, evidences)
+
+    print("\nThe probability calculated by inference is " + str(inferenece_result))
+    print("The probability calculated from data is " + str(data_result) + "\n")
