@@ -50,10 +50,10 @@ def create_cond_table2(var0_index, var1_index, var2_index):
                     var2_true_count[3] +=1
                 cond_sizes[3] += 1
 
-    cond_probs[(True, True)] = var2_true_count[0]/cond_sizes[0]
-    cond_probs[(True, False)] = var2_true_count[1]/cond_sizes[1]
-    cond_probs[(False, True)] = var2_true_count[2]/cond_sizes[2]
-    cond_probs[(False, False)] = var2_true_count[3]/cond_sizes[3]
+    cond_probs[(True, True)] = var2_true_count[0] / cond_sizes[0]
+    cond_probs[(True, False)] = var2_true_count[1] / cond_sizes[1]
+    cond_probs[(False, True)] = var2_true_count[2] / cond_sizes[2]
+    cond_probs[(False, False)] = var2_true_count[3] / cond_sizes[3]
 
     return cond_probs
 
@@ -96,92 +96,77 @@ def init_baynet():
     prob_B = (true_count / data_size)
     bayes_net["B"] = {"children": ["D"], "parents": [], "prob": prob_B, "condit_prob": {} }
 
-    c_cond_probs = create_cond_table(2, [0])
+    c_cond_probs = create_cond_table(0, 2)
     bayes_net["C"] = {"children": ["E", "F"], "parents": ["A"], "prob": -1, "condit_prob": c_cond_probs }
 
-    d_cond_probs = create_cond_table(3, [0, 1])
+    d_cond_probs = create_cond_table2(0, 1, 3)
     bayes_net["D"] = {"children": ["G"], "parents": ["A", "B"], "prob": -1, "condit_prob": d_cond_probs }
 
-    e_cond_probs = create_cond_table(4, [2])
+    e_cond_probs = create_cond_table(2, 4)
     bayes_net["E"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": e_cond_probs }
 
-    f_cond_probs = create_cond_table(5, [2])
+    f_cond_probs = create_cond_table(2, 5)
     bayes_net["F"] = {"children": [], "parents": ["C"], "prob": -1, "condit_prob": f_cond_probs }
 
-    g_cond_probs = create_cond_table(6, [3])
+    g_cond_probs = create_cond_table(3, 6)
     bayes_net["G"] = {"children": [], "parents": ["D"], "prob": -1, "condit_prob": g_cond_probs }
 
 def normalize(distribution):
-    return tuple(val * 1 / (sum(distribution)) for val in distribution)
+    return tuple(val / (sum(distribution)) for val in distribution)
 
-def toposort():
-    variables = list(bayes_net.keys())
-    print(variables)
-    s = set()
-    l = []
-    while len(s) < len(variables):
-        for v in variables:
-            if v not in s and all(x in s for x in bayes_net[v]['parents']):
-                s.add(v)
-                l.append(v)
-    print(l)
-    return l
+def query_given(Y, evidence_dict):
 
-def querygiven(Y, e):
-    # Y has no parents
-    if bayes_net[Y]['prob'] != -1:
-        if e[Y]:
+    if bayes_net[Y]['prob'] != -1: #No parent
+        if evidence_dict[Y]:
             prob = bayes_net[Y]['prob']
         else:
             prob = 1 - bayes_net[Y]['prob']
-
-    # Y has at least 1 parent
     else:
-        # get the value of parents of Y
-        parents = tuple(e[p] for p in bayes_net[Y]['parents'])
+        parents = tuple(evidence_dict[parent] for parent in bayes_net[Y]['parents'])
         
-        # query for prob of Y = y
-        
+        # query for prob of Y = y      
         prob = bayes_net[Y]['condit_prob'][parents] if e[Y] else 1 - bayes_net[Y]['condit_prob'][parents]
     return prob
 
-def enum_all(variables, e):
+def enum_all(variables, evidence_dict):
 
     if len(variables) == 0:
         return 1.0
+
     Y = variables[0]
-    if Y in e:
-        ret = querygiven(Y, e) * enum_all(variables[1:], e)
+    if Y in evidence_dict:
+        ret = query_given(Y, evidence_dict) * enum_all(variables[1:], evidence_dict)
+
     else:
-        probs = []
-        e2 = copy.deepcopy(e)
+        probabilities = []
+        evidence_copy = copy.deepcopy(evidence_dict)
+        
         for y in [True, False]:
-            e2[Y] = y
-            probs.append(querygiven(Y, e2) * enum_all(variables[1:], e2))
-        ret = sum(probs) 
+            evidence_copy[Y] = y
+            probabilities.append(query_given(Y, evidence_copy) * enum_all(variables[1:], evidence_copy))
+        ret = sum(probabilities) 
 
     return ret
 
-def enum_ask(X, e):
+def enum_ask(query_dict, evidence_dict):
     dist= []
     l=[True,False]
-    combinations = [list(i) for i in itertools.product(l,repeat=len(X))]
+    combinations = [list(i) for i in itertools.product(l,repeat=len(query_dict))]
 
-    X_list = list(X.keys())
-    X_values = list(X.values())
+    query_vars = list(query_dict.keys())
+    query_values = list(query_dict.values())
 
-    target = combinations.index(X_values)
+    target = combinations.index(query_values)
     
-    for c in combinations:
+    for comb in combinations:
 
-        e = copy.deepcopy(e)
+        evidence_copy = copy.deepcopy(evidence_dict)
 
-        for i in range(len(X_list)):
-            e[X_list[i]] = c[i]
+        for i in range(len(query_vars)):
+            evidence_copy[query_vars[i]] = comb[i]
 
-        variables = toposort()
-
-        dist.append(enum_all(variables, e))
+        variables = list(bayes_net.keys())
+        dist.append(enum_all(variables, evidence_copy))
 
     normalized = normalize(dist)
     return normalized[target]
@@ -230,7 +215,6 @@ def calc_with_data(query_dict, evidence_dict):
 
     return success_count / evidence_total
 
-
 init_baynet()
 
 #UI
@@ -247,8 +231,8 @@ def parse_variables(input):
                 variables[elem[0]] = True
     return variables
 
-queries = parse_variables(query_in.upper())
-evidences = parse_variables(evidence_in.upper())
+queries = parse_variables(query_in)
+evidences = parse_variables(evidence_in)
 
 if len(queries) == 0:
     print("\nQuery side cannot be empty")
